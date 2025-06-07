@@ -1,58 +1,76 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
+<?php
+// Database connection test page
+$connectionStatus = "Not tested";
+$details = "";
 
-name: Build and deploy ASP.Net Core app to Azure Web App - CTI01
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: windows-latest
-    permissions:
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up .NET Core
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 'v8.0'
-
-      - name: Build with dotnet
-        run: dotnet build --configuration Release
-
-      - name: dotnet publish
-        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
-
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
-
-  deploy:
-    runs-on: windows-latest
-    needs: build
-    environment:
-      name: 'Production'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+try {
+    // Get connection string from environment variables
+    $connectionString = getenv("DatabaseConnection");
     
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: .net-app
-      
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'CTI01'
-          slot-name: 'Production'
-          package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_71EB9DA529A94D609D0EB9BD871CF0D7 }}
+    if (!$connectionString) {
+        throw new Exception("Database connection string not found in environment variables");
+    }
+
+    // Parse connection string
+    $parts = [];
+    parse_str(str_replace(";", "&", $connectionString), $parts);
+    
+    // Extract details for display
+    $server = $parts['Server'] ?? 'Unknown';
+    $database = $parts['Database'] ?? 'Unknown';
+    
+    // Attempt connection
+    $conn = new PDO(
+        "sqlsrv:Server=" . $parts['Server'] . ";Database=" . $parts['Database'],
+        $parts['User ID'],
+        $parts['Password']
+    );
+    
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // Test query
+    $stmt = $conn->query("SELECT 1 AS test_value");
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($result && $result['test_value'] == 1) {
+        $connectionStatus = "✅ Connection successful!";
+    } else {
+        $connectionStatus = "⚠️ Connection test query failed";
+    }
+    
+    $details = "Server: $server<br>Database: $database";
+    
+} catch (Exception $e) {
+    $connectionStatus = "❌ Connection failed";
+    $details = "Error: " . $e->getMessage();
+}
+?>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Database Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; }
+        .status { font-size: 24px; padding: 20px; margin: 20px 0; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .failure { background-color: #f8d7da; color: #721c24; }
+        .details { background-color: #e2e3e5; padding: 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Database Connection Test</h1>
+    
+    <div class="status <?= strpos($connectionStatus, 'successful') !== false ? 'success' : 'failure' ?>">
+        <?= $connectionStatus ?>
+    </div>
+    
+    <div class="details">
+        <h3>Connection Details:</h3>
+        <?= $details ?>
+    </div>
+    
+    <h3>Environment Variables:</h3>
+    <pre><?php print_r($_SERVER); ?></pre>
+</body>
+</html>
